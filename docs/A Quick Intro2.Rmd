@@ -1,0 +1,149 @@
+---
+title: "Data Science Challenge: Predict the All-NBA team"
+date: 2016-08-25
+output: html_document
+always_allow_html: yes
+---
+
+```{r setup, include = FALSE}
+library(tidyverse)
+library(tictoc)
+library(data.table)
+library(dplyr)
+library(formattable)
+require(stringi)
+library(ggplot2)
+library(mapdata)
+library(ggmap)
+library(maps)
+library(scales)
+library(ggwordcloud)
+library(pander)
+library(kableExtra)
+
+main <- "/Users/benrommelaere/Desktop/Data Science/NBA_Stats"
+untouched <- file.path(main, "01 Untouched")
+raw <- file.path(main, "02 Raw")
+base <- file.path(main, "03 Base")
+temp <- file.path(main, "04 Intermediate")
+output <- file.path(main, "05 Output")
+
+load(file = file.path(temp, str_c("prediction_data_v1", ".Rda", sep="")))
+pred.df <- pred.df1
+```
+## Introduction
+This project will work with historical year end NBA season stats to try and predict who will make the All-NBA team. Once our model is finalized, we will then apply it to current (partial-season) data to make predictions for the 2020 All-NBA team ahead of this years announcement. 
+
+This is the first in a series of markdown files and is intended to introduce how we will approach categorization of our predictions and to provide a quick summary of our data. The first several proceeding posts will explore predicting whether or not a player is on any of the three All-NBA teams using a variety of machine learning tools. Once we are satisfied with our modelling for this, we will refine our model further by creating another version which will attempt to predict which of the three teams each player will make. In general, this can be thought of as an imballanced classification problem as there are roughly 450 NBA players in the league at a given time, but only 15 will be selected to the All-NBA team. However, for learning and exploratory proposes, we will begin by ignoring the imballance in our classification models, and proceed as if we were ignorant to this fact. Only after we evaluate a series of prediction models will we then go back and explore how adjusting for this imballance and using more sophisticated tools will improve our results. 
+
+### Data
+We have data for `r nrow(pred.df1)` player-seasons. Only 
+`r nrow(pred.df1 %>% filter(all_nba==1))` are All-NBA Players (1st through 3rd team) in our sample which covers data from `r min(pred.df$Year)` to `r max(pred.df$Year)`. We have data for `r dim(pred.df1)[2]` variables. The names of our main features of interest in our dataset are displayed below:
+```{r Names, echo = FALSE}
+names(pred.df1[8:38])
+```
+### Data Summary
+```{r}
+pred.df <- pred.df %>% 
+  mutate(all_nba = as.factor(all_nba))
+
+ggplot(data = pred.df, mapping = aes(x = ppg, y = VORP, color = all_nba)) +
+  geom_point()
+```
+
+
+## How to Assign Predictions
+We begin by using a logit model to categorize our data. As a test run, we now split our data into a training set and prediction set by holding out only 2017 for our prediction set and report the confusion matrix. Below we show the 2017 All-NBA selections. 
+```{r 2017 Selections, echo = TRUE}
+train = (pred.df$Year<2017)
+pred.df.2017 = pred.df[!train ,]
+cat.2017= pred.df$Category[!train]
+
+tab1 <- pred.df.2017 %>%
+  filter(all_nba==1) %>%
+  select('Player', 'Pos', 'Age', 'Tm', 'G', 'GS', 'W.L.', 'ppg') %>% 
+  arrange(-ppg)
+
+tab1 %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+The lowest scoring output on the All-NBA team is Draymond Green, followed by DeAndre Jordan and Rudy Gobert. These three selections highlight that our model will need to capture defence output as it will clearly be important for getting selections like these correct. 
+
+We start our analysis by using a simple logit model where we just dump what we think will be useful features into our model. We categorize our predictions by choosing those with the 15 highest predicted probabilities as being predicted to be on the All-NBA team. This rule is used as opposed to a cutoff value to ensure that we recive the correct number of predicted players on the All-NBA team.  
+```{r, echo = TRUE}
+glm.fit=glm(all_nba~traded + Age + GS + MP + ppg + apg + o.rpg + d.rpg + spg + PER +
+              bpg + fouls.pg + to.pg + W.L. + Pace + BPM + VORP + win.share + traded + true.shoot + 
+              three.perc + three.a + ft.perc + fta + fga + fg.perc,
+            data=pred.df, 
+            family = binomial,
+            subset = train)
+
+glm.probs = predict(glm.fit, pred.df.2017, type= "response")
+
+value = sort(glm.probs)[length(glm.probs)-15]
+glm.pred = rep("None" , 484)
+glm.pred[glm.probs > value]="All-NBA"
+
+table(glm.pred, pred.df.2017$Category) %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+Now we can see the basic logit model does not do a horrible job in predicting the 2017 All-NBA team, it gets 12 out of 15 correct. Let's see who are model is getting wrong.
+```{r xtable, echo = FALSE, results="asis"}
+report <- data.frame(pred.df.2017$Player, pred.df.2017$Pos, glm.pred, pred.df.2017$all_nba) %>% 
+  rename(Player = pred.df.2017.Player,
+         Position = pred.df.2017.Pos,
+         Predicted.Label = glm.pred,
+         Actual.Label = pred.df.2017.all_nba) %>% 
+  mutate(Actual.Label = ifelse(Actual.Label==1, "All-NBA", "None")) %>% 
+  filter((Predicted.Label=="All-NBA" & Actual.Label=="None") | (Predicted.Label=="None" & Actual.Label=="All-NBA")) %>% 
+  arrange(Predicted.Label)
+
+report %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+Digging a bit deeper, it looks like we predicted more point gaurds and less centers than actually select. This sheds light on a potential pitfall in our categorization rule - we don't account for position. The All-NBA team is a positional choice, so let's take a deeper look at position labels and see if we can potentially clean this up a bit to make our categorization a tab more accurate before we dive deeper into the modelling. 
+```{r, echo=FALSE}
+pred.df.2017 %>% 
+  select(Pos) %>% 
+  group_by(Pos) %>% 
+  summarise(Count = n()) %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+Who is the only split PF-C? Joffrey Lauvergne of the Chicago Bulls. We recatgeorize him as a C and move one. We now update our decision rule by ranking the top guards, forwards and centers. We will take the top 6 gaurds, top 6 forwards, and top 3 centers, regardless of whether or not they are predicted to be in the top 15. 
+```{r, echo = FALSE}
+update.rule <- data.frame(glm.probs, pred.df.2017$Player, pred.df.2017$Pos, pred.df.2017$all_nba, pred.df.2017$W.L.) %>% 
+  rename(Probability = glm.probs,
+         Player = pred.df.2017.Player,
+         Position = pred.df.2017.Pos,
+         Team.WinLoss = pred.df.2017.W.L.,
+         Actual.Label = pred.df.2017.all_nba) %>% 
+  mutate(Position.Group = ifelse(Position == "PG" | Position == "SG", "G",
+                                 ifelse(Position == "SF" | Position == "PF", "F", "C"))) %>% 
+  group_by(Position.Group) %>% 
+  mutate(Position.Rank = order(order(Probability, decreasing=TRUE))) %>% 
+  arrange(Position.Group, -Probability) %>% 
+  mutate(Actual.Label = ifelse(Actual.Label==1, "All-NBA", "None")) %>% 
+  mutate(Predicted.Label = ifelse(Position.Rank<=3 & Position.Group=="C", "All-NBA", 
+                               ifelse(Position.Rank<=6 & Position.Group!="C", "All-NBA", "None")))
+  
+table(update.rule$Predicted.Label, update.rule$Actual.Label) %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+Now we actually the same amount wrong - but who we get wrong has changed. Let's look at our errors again using this selection method. 
+```{r, echo = FALSE, results="asis"}
+report <- update.rule %>% 
+  ungroup() %>% 
+  filter(Predicted.Label != Actual.Label) %>% 
+  arrange(Predicted.Label) %>% 
+  select(Player, Position, Actual.Label, Predicted.Label, Team.WinLoss)
+
+report %>% 
+  kable('html', digits = 2) %>% 
+  kable_styling(bootstrap_options = "striped", full_width = F)
+```
+Our new selection method has now chosen Hayward instead of Kyrie, but still neither made the All-NBA team. Now we can easily see that our model selected Lillard over DeRozan, KAT over DeAndre, and Hayward over Green. The selection of Green and DeRozan lead me to believe the winning records may matter more than my model allows for as they both played key roles on winning teams, however KAT's team record is much, much worse the DeAndre's. 
