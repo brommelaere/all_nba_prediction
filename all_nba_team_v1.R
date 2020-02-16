@@ -53,13 +53,13 @@ output <- file.path(main, "05 Output")
 # ----------------------------------------------------------
 # 1: Putting All the Data Together
 # ----------------------------------------------------------
-players.df <- read.csv(file = file.path(main, str_c("Players", ".csv", sep="")),
+players.df <- read.csv(file = file.path(raw, str_c("Players", ".csv", sep="")),
                      header = T, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") 
 
-player.data.df <- read.csv(file = file.path(main, str_c("player_data", ".csv", sep="")),
+player.data.df <- read.csv(file = file.path(raw, str_c("player_data", ".csv", sep="")),
                            header = T, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") 
 
-player.stats.df <- read.csv(file = file.path(main, str_c("Seasons_Stats", ".csv", sep="")),
+player.stats.df <- read.csv(file = file.path(raw, str_c("Seasons_Stats", ".csv", sep="")),
                            header = T, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") %>% 
   filter(Year >= 1988) %>% 
   rename(true.shoot = TS.,
@@ -92,16 +92,16 @@ player.stats.df <- read.csv(file = file.path(main, str_c("Seasons_Stats", ".csv"
   select(-X.y) %>% 
   rename(id = X.x) 
   
-team.records.df <- read.csv(file = file.path(main, str_c("Team_Records", ".csv", sep="")),
+team.records.df <- read.csv(file = file.path(raw, str_c("Team_Records", ".csv", sep="")),
                            header = T, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") %>% 
   mutate(Team = str_replace(Team, "\\*", ""))  
 
-team.acro.df <- read.csv(file = file.path(main, str_c("team_acronyms_v1", ".csv", sep="")),
+team.acro.df <- read.csv(file = file.path(raw, str_c("team_acronyms_v1", ".csv", sep="")),
                        header = F, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") %>% 
   rename(Team = V2,
          Acronym = V1)
 
-all.nba.df <- read.csv(file = file.path(main, str_c("All_NBA_Teams_v2", ".csv", sep="")),
+all.nba.df <- read.csv(file = file.path(raw, str_c("All_NBA_Teams_v2", ".csv", sep="")),
                             header = T, sep = ",", stringsAsFactors=FALSE, na.strings = "NA") %>% 
   filter(Season!="") %>% 
   gather('C', starts_with("F"), starts_with("G"), key = "position", value = "name") %>% 
@@ -185,7 +185,7 @@ pred.df <- pred.df %>%
   drop_na()
 
 save(pred.df1,
-     file = file.path(main, str_c("prediction_data_v1", ".Rda", sep="")))
+     file = file.path(temp, str_c("prediction_data_v1", ".Rda", sep="")))
 
 ### BEGIN TRAINING DATA CODE
 names(pred.df)  
