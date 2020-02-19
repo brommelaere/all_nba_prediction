@@ -8,42 +8,29 @@ script.meta <- list(
   
   ##
   Programmer   = "Ben Rommelaere",
-  Case				 = "ALL NBA TEAM PREDICTION",
+  Case				 = "ALL NBA TEAM DATASET CREATION",
   Program      = "",
   Version      = 1,
   Date_Created = "12/26/2019",
-  Last_Updated = "12/26/2019",
+  Last_Updated = "02/16/2020",
   
   Description  = 
     
-    "Get List & All Metadata",
+    "Load csvs & combine into dataset for analysis.",
   
   Notes        = 
     
-    ""
+    "Saves completed data to base folder"
   
 )
 
 # *************************************************************************
 
 # packages ----------------------------------------------------------------
-
 library(tidyverse)
-library(tictoc)
-library(data.table)
-library(dplyr)
-library(formattable)
-require(stringi)
-library(ggplot2)
-library(mapdata)
-library(ggmap)
-library(maps)
-library(scales)
-library(ggwordcloud)
 
 # Paths -------------------------------------------------------------------
-
-main <- "/Users/benrommelaere/Desktop/Data Science/NBA_Stats"
+main <- "/Users/benrommelaere/Desktop/Data Science/NBA_Stats" #change this to local repo location
 untouched <- file.path(main, "01 Untouched")
 raw <- file.path(main, "02 Raw")
 base <- file.path(main, "03 Base")
@@ -185,4 +172,4 @@ pred.df <- pred.df %>%
   drop_na()
 
 save(pred.df1,
-     file = file.path(temp, str_c("prediction_data_v1", ".Rda", sep="")))
+     file = file.path(base, str_c("prediction_data_v1", ".Rda", sep="")))
